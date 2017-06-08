@@ -1,0 +1,104 @@
+$ossdisk = <<SCRIPT
+  disk=`lsblk | grep 20G | grep disk | awk '{print $1}'`
+  disk="/dev/$disk"
+  pvcreate $disk
+  vgcreate vg00 $disk
+  for i in `seq 0 8`; do
+    lvcreate --name "vg00/ost$i" --size 2G
+  done
+  lvcreate --name "vg00/ost9" -l 100%FREE
+SCRIPT
+
+$mdsdisk = <<SCRIPT
+  disk=`lsblk | grep 5G | grep disk | awk '{print $1}'`
+  disk="/dev/$disk"
+  pvcreate $disk
+  vgcreate vg00 $disk
+  lvcreate --name "vg00/mds" -l 100%FREE
+SCRIPT
+
+# $mkfsmds = <<SCRIPT
+#   mkdir /mds
+#   mkfs.lustre --fsname lustre --mdt --mgs /dev/vg00/mds
+#   mount -t lustre /dev/vg00/mds /mds
+# SCRIPT
+
+# $mkfsoss = <<SCRIPT
+#   for i in `seq 0 9`; do
+#     mkdir -p /mnt/ost$i
+#     mkfs.lustre --fsname lustre --ost --mgsnode=192.168.70.10@tcp --index=$i /dev/vg00/ost$i
+#     mount -t lustre  /dev/vg00/ost$i /mnt/ost$i
+#   done
+# SCRIPT
+
+# $mkfsclient = <<SCRIPT
+#   mkdir /mnt/lustre
+#   mount -t lustre 192.168.0.10@tcp0:/lustre /mnt/lustre
+# SCRIPT
+
+$selinux = <<SCRIPT
+  sed -i 's/SELINUX=.*/SELINUX=disabled/g' /etc/selinux/config
+SCRIPT
+
+$lnet = <<SCRIPT
+  echo "options lnet networks=tcp(eth1)" > /etc/modprobe.d/lnet.conf
+SCRIPT
+
+
+$install_server = <<SCRIPT
+  cd /vagrant/rpms/server
+  yum -y localinstall kernel*
+  yum -y localinstall lustre* kmod* e2fsprogs* libcom* libss*
+SCRIPT
+
+$install_client = <<SCRIPT
+  cd /vagrant/rpms/client
+  yum -y localinstall lustre* kmod*
+SCRIPT
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "centos/7"
+  config.vm.box_check_update = false
+  config.vbguest.auto_update = false
+  config.vm.provision "shell", inline: $selinux
+  config.vm.define "mds" do |mds|
+    mds.vm.provider "virtualbox" do |vb|
+      vb.cpus = 2  
+      vb.memory = "2048"
+      if !File.file?("./tmp/mds.vdi")
+        vb.customize ["createhd", "--filename", "./tmp/mds.vdi", "--size", 5*1024]
+        vb.customize ["storagectl", :id, "--name", "MDS", "--add", "sata", "--controller", "IntelAHCI"]
+        vb.customize ["storageattach", :id, "--storagectl", "MDS", "--port", 1, "--device", 0, "--type", "hdd", "--medium", "./tmp/mds.vdi"] 
+      end
+    end
+    mds.vm.network "private_network", ip: "192.168.70.10"
+    mds.vm.provision "shell", inline: $mdsdisk
+    mds.vm.provision "shell", inline: $install_server
+  end
+
+  config.vm.define "oss-1" do |oss|
+    oss.vm.provider "virtualbox" do |vb|
+      vb.cpus = 1 
+      vb.memory = "1024"
+      if !File.file?("./tmp/oss-1.vdi")
+        vb.customize ["createhd", "--filename", "./tmp/oss-1.vdi", "--size", 20*1024]
+        vb.customize ["storagectl", :id, "--name", "OSS", "--add", "sata", "--controller", "IntelAHCI"]
+        vb.customize ["storageattach", :id, "--storagectl", "OSS", "--port", 1, "--device", 0, "--type", "hdd", "--medium", "./tmp/oss-1.vdi"]
+      end
+    end
+    oss.vm.network "private_network", ip: "192.168.70.11"
+    oss.vm.provision "shell", inline: $ossdisk
+    oss.vm.provision "shell", inline: $install_server
+  end
+
+  config.vm.define "client" do |client|
+    client.vm.provider "virtualbox" do |vb|
+      vb.cpus = 1
+      vb.memory = "1024"
+    end
+    client.vm.network "private_network", ip: "192.168.70.50"
+    client.vm.provision "shell", inline: $install_client
+  end
+
+  config.vm.provision "shell", inline: $lnet
+end
