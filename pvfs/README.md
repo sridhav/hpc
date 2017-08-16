@@ -32,7 +32,10 @@ Firstly you need to have [virtualbox](https://www.virtualbox.org/wiki/Downloads)
 
 As there are 5 VMs that need to be brought up it might take few mins
 
+#### What is PVFS?
 
-#### What is Vagrant
+PVFS is a parallel virtual file system which distributes file data across multiple servers and provides for concurrent access by multiple tasks of a parallel application. More about PVFS can be found [here](http://www.parl.clemson.edu/pvfs/el2000/extreme2000.html)
+
+#### What is Vagrant?
 
 Vagrant is a tool that uses Oracle's VirtualBox to dynamically build configurable, lightweight, and portable virtual machines. Vagrant supports the use of either Puppet or Chef for managing the configuration. 
