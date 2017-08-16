@@ -1,0 +1,11 @@
+127.0.0.1       localhost
+
+192.168.70.20   server.pvfs     server
+
+192.168.70.21   node-1.pvfs     node-1
+192.168.70.22   node-2.pvfs     node-2
+192.168.70.23   node-3.pvfs     node-3
+192.168.70.24   node-4.pvfs     node-4
+
+192.168.70.31   client-1.pvfs     client
+192.168.70.32   client-2.pvfs     client

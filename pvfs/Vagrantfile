@@ -1,0 +1,69 @@
+$pvfs = <<SCRIPT
+    mkdir -p /data/pvfs/data && mkdir -p /data/pvfs/meta
+    cp /vagrant/hosts /etc/hosts
+    cp /vagrant/pvfs2.conf /etc/pvfs.conf
+    /opt/orangefs/sbin/pvfs2-server /etc/pvfs.conf -f
+    /opt/orangefs/sbin/pvfs2-server /etc/pvfs.conf
+SCRIPT
+
+$build = <<SCRIPT
+    rm -rf /opt/orangefs
+    yum -y install wget gcc flex bison openssl-devel db4-devel kernel-devel perl make openldap-devel
+    wget https://s3.amazonaws.com/download.orangefs.org/current/source/orangefs-2.9.6.tar.gz
+    tar xvzf orangefs-2.9.6.tar.gz -C /opt/
+    rm -rf orangefs-2.9.6.tar.gz
+    
+    # requires libdb and libattr devel packages
+    yum -y install libdb-devel libattr-devel
+    cd /opt/orangefs-2.9.6/ && ./configure --prefix=/opt/orangefs --with-kernel=/usr/src/kernels/`uname -r` && make && make install && make kmod && make kmod_prefix=/opt/orangefs kmod_install
+SCRIPT
+
+$client = <<SCRIPT
+    cp /vagrant/hosts /etc/hosts
+    insmod `find /opt/orangefs -name pvfs2.ko`
+    mkdir -p /mnt/orangefs
+
+    # should be together [client command and mount]
+    /opt/orangefs/sbin/pvfs2-client -p /opt/orangefs/sbin/pvfs2-client-core
+    mount -t pvfs2 tcp://server:3334/orangefs /mnt/orangefs    
+SCRIPT
+
+Vagrant.configure("2") do |config|
+    config.vm.box = "centos/7"
+    config.vm.box_check_update = false
+    config.vm.synced_folder "orangefs", "/opt/orangefs"
+    config .vm.define "server" do |server|
+        server.vm.provider "virtualbox" do |vb|
+            vb.cpus=2
+            vb.memory="2048"
+        end
+        server.vm.hostname = "server.pvfs"
+        server.vm.network "private_network", ip: "192.168.70.20"
+        server.vm.provision "shell", inline: $build
+        server.vm.provision "shell", inline: $pvfs
+    end
+
+    (1..2).each do |i|
+        config.vm.define "node-#{i}" do |node|
+            node.vm.hostname = "node-#{i}.pvfs"
+            node.vm.network "private_network", ip: "192.168.70.2#{i}"
+            node.vm.provider "virtualbox" do |vb|
+                vb.cpus = 1
+                vb.memory = "1024"
+            end
+            node.vm.provision "shell", inline: $pvfs
+        end
+    end
+    
+    (1..2).each do |i|
+        config.vm.define "client-#{i}" do |client|
+            client.vm.hostname = "client-#{i}.pvfs"
+            client.vm.network "private_network", ip: "192.68.70.3#{i}"
+            client.vm.provider "virtualbox" do |vb|
+                vb.cpus = 1
+                vb.memory = "512"
+            end
+            client.vm.provision "shell", inline: $client
+        end
+    end
+end
